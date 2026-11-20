@@ -2,7 +2,7 @@
 
 Paste a web page URL and get the most frequent keywords and phrases in its **main content**. Supports Arabic, English, and mixed-language pages.
 
-**Live demo:** [https://YOUR-APP-NAME.streamlit.app](https://YOUR-APP-NAME.streamlit.app)
+**Live demo:** [[https://YOUR-APP-NAME.streamlit.app](https://YOUR-APP-NAME.streamlit.app](https://hotkeyword-project-4houp4d5nlneifvgbnw7xu.streamlit.app/))
 
 ## Features
 
