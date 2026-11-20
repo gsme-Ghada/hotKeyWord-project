@@ -1,18 +1,16 @@
 """
 analyzer.py
-الدالة الوحيدة اللي الواجهة بتناديها: analyze(url).
+The only function the UI calls: analyze(url).
 
-اللينك ← get_page ← extract_main_text ← detect_lang ← preprocess ← count_keywords
+URL -> get_page -> extract_main_text -> detect_lang -> preprocess_with_breaks -> count_keywords
 
-بتجرّب من الـ terminal كمان:
-    python analyzer.py https://example.com/article
 """
 from extractor import extract_main_text
 from fetcher import FetchError, get_page
 from keywords import count_keywords
-from nlp import detect_lang, preprocess
+from nlp import detect_lang, preprocess_with_breaks
 
-MIN_WORDS_WARNING = 100   # أقل من كده نحذّر إن الصفحة مش صفحة محتوى
+MIN_WORDS_WARNING = 100   # below this, warn that the page is probably not a content page
 
 
 def _longest_line(text):
@@ -22,11 +20,11 @@ def _longest_line(text):
 
 def analyze(url, n=1, top=20):
     """
-    بترجّع dict دايماً (مبترفعش exceptions للواجهة):
+    Always returns a dict (never raises exceptions to the UI):
       ok, error, url, lang, fetch_method, extract_method, extract_info,
       text, longest_paragraph, words, total_words, unique_words,
       keywords [(kw, freq)], warnings [str]
-    لو ok = False الرسالة في error.
+    If ok = False, the message is in error.
     """
     result = {"ok": False, "error": None, "url": url, "warnings": []}
     try:
@@ -40,13 +38,15 @@ def analyze(url, n=1, top=20):
         result["extract_info"] = ext_info
         if not text.strip():
             raise FetchError(
-                "مقدرتش أطلّع نص من الصفحة دي. غالباً المحتوى بيتحمّل بالـ JavaScript "
-                "أو الصفحة مفيهاش نص. جرّبي لينك مقال أو صفحة محتوى."
+                "Could not extract any text from this page. The content is "
+                "probably loaded with JavaScript, or the page has no text. "
+                "Try an article or content page link."
             )
 
-        words = preprocess(text)
-        if not words:
-            raise FetchError("النص اللي طلع مفيهوش كلمات قابلة للتحليل (عربي أو إنجليزي).")
+        words = preprocess_with_breaks(text)
+        clean = [w for w in words if w]
+        if not clean:
+            raise FetchError("The extracted text has no analyzable words (Arabic or English).")
 
         lang = detect_lang(text)
         result.update(
@@ -54,34 +54,36 @@ def analyze(url, n=1, top=20):
             longest_paragraph=_longest_line(text),
             lang=lang,
             words=words,
-            total_words=len(words),
-            unique_words=len(set(words)),
+            total_words=len(clean),
+            unique_words=len(set(clean)),
             keywords=count_keywords(words, n=n, top=top),
         )
 
-        # تحذيرات الجودة
+        # Quality warnings
         if ext_info["method"] == "fallback":
             result["warnings"].append(
-                "المكتبة الأساسية معرفتش تحدد المحتوى، فاستخدمت الطريقة الاحتياطية "
-                "(أكتر container فيه فقرات). راجعي النص المستخرج."
+                "The main library could not locate the content, so the fallback "
+                "method was used (the container with the most paragraphs). "
+                "Please review the extracted text."
             )
         elif ext_info["method"] == "trafilatura (short)":
-            result["warnings"].append("النص المستخرج قصير، ممكن يكون ناقص.")
-        if len(words) < MIN_WORDS_WARNING:
+            result["warnings"].append("The extracted text is short and may be incomplete.")
+        if len(clean) < MIN_WORDS_WARNING:
             result["warnings"].append(
-                f"النص قليل ({len(words)} كلمة بعد التنضيف). غالباً الصفحة دي "
-                "مش صفحة محتوى (رئيسية أو قايمة)، فالنتيجة ممكن تبقى ضعيفة."
+                f"Very little text ({len(clean)} words after cleaning). This is "
+                "probably not a content page (homepage or listing), so the "
+                "result may be weak."
             )
         if lang == "mixed":
             result["warnings"].append(
-                "الصفحة فيها عربي وإنجليزي مع بعض، والكلمات معدودة للغتين."
+                "The page mixes Arabic and English, and words are counted for both languages."
             )
         result["ok"] = True
 
     except FetchError as e:
         result["error"] = str(e)
-    except Exception as e:  # أي خطأ مش متوقع، عشان الواجهة متقعش
-        result["error"] = f"حصل خطأ غير متوقع ({type(e).__name__}): {e}"
+    except Exception as e:  # any unexpected error, so the UI never crashes
+        result["error"] = f"Unexpected error ({type(e).__name__}): {e}"
     return result
 
 
