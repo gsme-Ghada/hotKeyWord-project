@@ -6,6 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import shutil
 
 # Settings
 USER_AGENT = (
@@ -115,9 +116,15 @@ def fetch_html(url):
 
 # 3) Selenium
 def fetch_rendered(url, wait_seconds=3):
+    """
+    Open the page in a real (headless) Chrome and return the HTML after JavaScript has run.
+    Requires: pip install selenium + Google Chrome (or Chromium) installed on the machine.
+    (Selenium 4.6+ downloads the driver automatically when using a local Chrome.)
+    """
     try:
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
         from selenium.webdriver.support.ui import WebDriverWait
     except ImportError:
         raise FetchError("Selenium is not installed (pip install selenium).")
@@ -126,12 +133,20 @@ def fetch_rendered(url, wait_seconds=3):
     opts.add_argument("--headless=new")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-gpu")
+    opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--window-size=1366,900")
     opts.add_argument(f"--user-agent={USER_AGENT}")
 
     driver = None
     try:
-        driver = webdriver.Chrome(options=opts)
+        chromium = shutil.which("chromium") or shutil.which("chromium-browser")
+        chromedriver = shutil.which("chromedriver")
+        if chromium and chromedriver:      # system install (e.g. Streamlit Cloud)
+            opts.binary_location = chromium
+            driver = webdriver.Chrome(service=Service(chromedriver), options=opts)
+        else:                              # local machine: Selenium Manager handles it
+            driver = webdriver.Chrome(options=opts)
+
         driver.set_page_load_timeout(30)
         driver.get(url)
         WebDriverWait(driver, 15).until(
